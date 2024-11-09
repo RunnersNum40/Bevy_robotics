@@ -1,4 +1,8 @@
 use avian3d::prelude::*;
+use avian_motors::motor::{
+    MotorDerivativeGain, MotorIntegralGain, MotorMaxAngularVelocity, MotorPlugin,
+    MotorProportionalGain, RevoluteMotorBundle, TargetRotation,
+};
 use bevy::prelude::*;
 use std::collections::HashMap;
 use urdf_rs::{Geometry, Pose};
@@ -12,6 +16,11 @@ struct URDFCollider;
 
 #[derive(Component, Clone, Debug)]
 struct URDFVisual;
+
+#[derive(Component, Clone, Debug)]
+struct URDFJoint {
+    pub name: String,
+}
 
 #[derive(Component, Clone, Debug)]
 pub struct Robot {
@@ -36,6 +45,10 @@ impl Plugin for RobotSpawnerPlugin {
             bevy_stl::StlPlugin,
             PhysicsPlugins::default(),
             PhysicsDebugPlugin::default(),
+            MotorPlugin {
+                substep_count: None,
+                ..Default::default()
+            },
         ))
         .add_systems(FixedUpdate, spawn_robot_system)
         .add_systems(PostProcessCollisions, ignore_collision)
@@ -396,7 +409,7 @@ fn urdf_to_joint(
 ) {
     let axis = Vec3::from(urdf_joint.axis.xyz.map(|v| v as f32));
     let dynamics = urdf_joint.dynamics.clone().unwrap_or(urdf_rs::Dynamics {
-        damping: 10000.0,
+        damping: 0.0,
         friction: 0.0,
     });
 
@@ -420,7 +433,20 @@ fn urdf_to_joint(
                 joint
             };
 
-            commands.spawn(joint);
+            commands.spawn((
+                joint,
+                URDFJoint {
+                    name: urdf_joint.name.clone(),
+                },
+                TargetRotation(Vec3::ZERO.into()),
+                RevoluteMotorBundle {
+                    stiffness: MotorProportionalGain(0.0000),
+                    // damping: MotorDerivativeGain(0.1),
+                    // integral_gain: MotorIntegralGain(0.1),
+                    max_angular_velocity: MotorMaxAngularVelocity(Some(3.0)),
+                    ..Default::default()
+                },
+            ));
         }
         urdf_rs::JointType::Fixed => {
             commands.spawn(FixedJoint::new(entity1, entity2));
